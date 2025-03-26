@@ -13,7 +13,7 @@ XML_LANG = '{http://www.w3.org/XML/1998/namespace}lang'
 eng_only = True
 
 parser = etree.XMLParser(resolve_entities=False)
-root = etree.parse("JMdict", parser);
+root = etree.parse("JMdict.xml", parser);
 for ent in root.iter(etree.Entity):
     if ent.getparent() is not None:
         if not ent.getparent().text:

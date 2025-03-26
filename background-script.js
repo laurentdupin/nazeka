@@ -2,6 +2,8 @@
 
 'use strict';
 
+const fs = require('node:fs');
+
 // updated by a timer looping function, based on local storage set by the options page
 // we only use a tiny number of settings here
 
@@ -33,21 +35,21 @@ async function settings_init()
     } catch(err) {} // options not stored yet
 }
 
-settings_init();
+//settings_init();
 
-browser.storage.onChanged.addListener((updates, storageArea) =>
-{
-    if(storageArea != "local") return;
-    for(let setting of Object.entries(updates))
-    {
-        let option = setting[0];
-        let value = setting[1];
-        if(Object.keys(settings).includes(option))
-            settings[option] = value.newValue;
-        if(option == "enabled")
-            fixicon();
-    }
-});
+// browser.storage.onChanged.addListener((updates, storageArea) =>
+// {
+//     if(storageArea != "local") return;
+//     for(let setting of Object.entries(updates))
+//     {
+//         let option = setting[0];
+//         let value = setting[1];
+//         if(Object.keys(settings).includes(option))
+//             settings[option] = value.newValue;
+//         if(option == "enabled")
+//             fixicon();
+//     }
+// });
 
 // We use JMdict converted to JSON. It's like 32MB (larger after converting into a data structure) so we don't want to load it for every tab.
 // So we need to use a background script and send messages to it from the content script.
@@ -139,7 +141,7 @@ async function migrate_legacy_then_refresh()
     refresh_json();
 }
 
-migrate_legacy_then_refresh();
+//migrate_legacy_then_refresh();
 
 function json_lookup_arbitrary_as_is(dict, text)
 {
@@ -200,22 +202,7 @@ function build_audio_table()
     {
         if (this.status === 200)
         {
-            let i = 0;
-            let j = 0;
-            while ((j = this.responseText.indexOf("\n", i)) !== -1)
-            {
-                let text = this.responseText.substring(i, j);
-                if(!text.includes(","))
-                    lookup_audio.add(text);
-                else
-                    lookup_audio_broken.set(text.split(",")[1], text.split(",")[0]);
-                i = j + 1;
-            }
-            let text = this.responseText.substring(i, j);
-            if(!text.includes(","))
-                lookup_audio.add(text);
-            else
-                lookup_audio_broken.set(text.split(",")[1], text.split(",")[0]);
+            
         }
         else
             console.error(xhr.statusText);
@@ -244,30 +231,41 @@ function load_kanji()
 // Thanks, linter team!
 function load_part_of_dictionary(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", builddict);
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    dict = dict.concat(JSON.parse(text));
+    dictsloaded++;
 }
 
 function load_jdic_audio_table(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", build_audio_table);
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let fulltext = fs.readFileSync(filename, 'utf8');
+
+    let i = 0;
+    let j = 0;
+    while ((j = fulltext.indexOf("\n", i)) !== -1)
+    {
+        let text = fulltext.substring(i, j);
+        if(!text.includes(","))
+            lookup_audio.add(text);
+        else
+            lookup_audio_broken.set(text.split(",")[1], text.split(",")[0]);
+        i = j + 1;
+    }
+    let text = fulltext.substring(i, j);
+    if(!text.includes(","))
+        lookup_audio.add(text);
+    else
+        lookup_audio_broken.set(text.split(",")[1], text.split(",")[0]);
 }
 
 
 function load_kanji_data(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", load_kanji);
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+
+    let data = JSON.parse(text);
+    for(let entry of data)
+        kanji_data.set(entry["c"], entry);
 }
 
 load_part_of_dictionary("dict/JMdict1.json");
@@ -332,7 +330,8 @@ function waittobuildlookups()
         buildlookups();
     }
 }
-waiter = setInterval(waittobuildlookups, 1000);
+
+buildlookups();
 
 // In JMdict, part-of-speech tags are XML entities.
 // We processed JMdict's XML with entity processing disabled so we can just use the bare tags (e.g. "v1", not "ichidan verb").
@@ -477,21 +476,8 @@ let priority_rules = [];
 
 function load_priority_rules(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", () =>
-    {
-        if (req.readyState === 4)
-        {
-            console.log("loaded priority rules");
-            if (req.status === 200)
-                priority_rules = JSON.parse(req.responseText);
-            else
-                console.error(req.statusText);
-        }
-    });
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    priority_rules = JSON.parse(text);
 }
 
 load_priority_rules("dict/priority.json");
@@ -501,21 +487,8 @@ let freq_vns = {};
 
 function load_freqlist_vns(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", () =>
-    {
-        if (req.readyState === 4)
-        {
-            console.log("loaded vn freq data");
-            if (req.status === 200)
-                freq_vns = JSON.parse(req.responseText);
-            else
-                console.error(req.statusText);
-        }
-    });
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    freq_vns = JSON.parse(text);
 }
 load_freqlist_vns("dict/freqlist_vns.json");
 
@@ -524,21 +497,8 @@ let freq_narou = {};
 
 function load_freqlist_narou(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", () =>
-    {
-        if (req.readyState === 4)
-        {
-            console.log("loaded narou freq data");
-            if (req.status === 200)
-                freq_narou = JSON.parse(req.responseText);
-            else
-                console.error(req.statusText);
-        }
-    });
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    freq_narou = JSON.parse(text);
 }
 load_freqlist_narou("dict/freqlist_narou.json");
 
@@ -547,21 +507,8 @@ let freq_novels = {};
 
 function load_freqlist_novels(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", () =>
-    {
-        if (req.readyState === 4)
-        {
-            console.log("loaded novels freq data");
-            if (req.status === 200)
-                freq_novels = JSON.parse(req.responseText);
-            else
-                console.error(req.statusText);
-        }
-    });
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    freq_novels = JSON.parse(text);
 }
 load_freqlist_novels("dict/freqlist_novels.json");
 
@@ -570,21 +517,8 @@ let rules = [];
 
 function load_deconjugation_rules(filename)
 {
-    let req = new XMLHttpRequest();
-    req.addEventListener("load", () =>
-    {
-        if (req.readyState === 4)
-        {
-            console.log("loaded deconjugation rules");
-            if (req.status === 200)
-                rules = JSON.parse(req.responseText);
-            else
-                console.error(req.statusText);
-        }
-    });
-    req.open("GET", browser.extension.getURL(filename));
-    req.send();
-    return req;
+    let text = fs.readFileSync(filename, 'utf8');
+    rules = JSON.parse(text);
 }
 
 load_deconjugation_rules("dict/deconjugator.json");
@@ -1910,39 +1844,39 @@ function open_jsonconfig(info, tab)
     } catch(err) {} // don't care
 }
 
-if(browser.contextMenus)
-{
-    browser.contextMenus.create({
-        id: "nazeka-options",
-        title: "Options",
-        contexts: ["browser_action"],
-        onclick: open_options
-    });
-    browser.contextMenus.create({
-        id: "nazeka-reader",
-        title: "Open Reader",
-        contexts: ["browser_action"],
-        onclick: open_reader
-    });
-    browser.contextMenus.create({
-        id: "nazeka-mining",
-        title: "View Mined Cards",
-        contexts: ["browser_action"],
-        onclick: open_mining
-    });
-    browser.contextMenus.create({
-        id: "nazeka-livemining",
-        title: "Configure Live Mining",
-        contexts: ["browser_action"],
-        onclick: open_livemining
-    });
-    browser.contextMenus.create({
-        id: "nazeka-jsonconfig",
-        title: "Manage JSON Dictionaries",
-        contexts: ["browser_action"],
-        onclick: open_jsonconfig
-    });
-}
+// if(browser.contextMenus)
+// {
+//     browser.contextMenus.create({
+//         id: "nazeka-options",
+//         title: "Options",
+//         contexts: ["browser_action"],
+//         onclick: open_options
+//     });
+//     browser.contextMenus.create({
+//         id: "nazeka-reader",
+//         title: "Open Reader",
+//         contexts: ["browser_action"],
+//         onclick: open_reader
+//     });
+//     browser.contextMenus.create({
+//         id: "nazeka-mining",
+//         title: "View Mined Cards",
+//         contexts: ["browser_action"],
+//         onclick: open_mining
+//     });
+//     browser.contextMenus.create({
+//         id: "nazeka-livemining",
+//         title: "Configure Live Mining",
+//         contexts: ["browser_action"],
+//         onclick: open_livemining
+//     });
+//     browser.contextMenus.create({
+//         id: "nazeka-jsonconfig",
+//         title: "Manage JSON Dictionaries",
+//         contexts: ["browser_action"],
+//         onclick: open_jsonconfig
+//     });
+// }
 
 let origin_tab = undefined;
 
@@ -1959,10 +1893,10 @@ function set_up_paste_overload()
     });
 }
 
-if (document.readyState == "complete")
-    set_up_paste_overload();
-else
-    document.addEventListener("DOMContentLoaded", set_up_paste_overload);
+// if (document.readyState == "complete")
+//     set_up_paste_overload();
+// else
+//     document.addEventListener("DOMContentLoaded", set_up_paste_overload);
 
 function clipboard_hook(tab)
 {
@@ -1996,117 +1930,117 @@ function send_error(tab, error)
     }
 }
 
-browser.runtime.onMessage.addListener((req, sender) =>
-{
-    if (req.type == "search")
-    {
-        let asdf = lookup_indirect(req.text, req.time, req.divexisted, req.settings);
-        return Promise.resolve({"response" : asdf});
-    }
-    if (req.type == "search_kanji")
-    {
-        let asdf = lookup_kanji_character(req.text, req.divexisted);
-        return Promise.resolve({"response" : asdf});
-    }
-    else if (req.type == "platform")
-    {
-        return Promise.resolve({"response" : platform});
-    }
-    else if (req.type == "fixicon")
-    {
-        fixicon();
-    }
-    else if (req.type == "gimmetext")
-    {
-        clipboard_hook(sender.tab);
-    }
-    else if (req.type == "refreshjson")
-    {
-        refresh_json();
-    }
-    else if (req.type == "reader_lookup")
-    {
-        browser.tabs.sendMessage(req.id, {type:req.type, x:req.x, y:req.y, text:req.text});
-    }
-    else if (req.type == "reader_mode")
-    {
-        browser.tabs.sendMessage(req.id, {type:req.type});
-    }
-    else if (req.type == "ankiconnect_mine")
-    {
-        console.log("handling ankiconnect mining request");
-        let xhr = new XMLHttpRequest();
-        xhr.open("POST", req.host, true);
-        xhr.overrideMimeType('application/json');
-        //xhr.setRequestHeader('Content-type','application/json; charset=utf-8');
-        xhr.addEventListener('load', () =>
-        {
-            let response = JSON.parse(xhr.responseText);
-            try
-            {
-                if(response.error)
-                    send_error(sender.tab.id, "AnkiConnect mining failed: " + response.error);
-                else
-                {
-                    if(settings.ankiconnect_force_sync)
-                    {
-                        let newxhr = new XMLHttpRequest();
-                        newxhr.open("POST", req.host, true);
-                        newxhr.send('{"action": "sync","version": 6}');
-                    }
-                }
-            }
-            catch (e)
-            {
-                console.log("error while interacting with ankiconnect:");
-                console.log(e);
-            }
-        });
-        xhr.addEventListener('error', (e) =>
-        {
-            send_error(sender.tab.id, "AnkiConnect mining failed: unspecified error (Anki is probably not open)");
-            console.log(e);
-        });
-        xhr.addEventListener('timeout', () =>
-        {
-            send_error(sender.tab.id, "AnkiConnect mining failed: timed out");
-        });
-        xhr.send(req.command);
-    }
-    else if (req.type == "play_audio")
-    {
-        let audio = new Audio(req.host);
-        audio.volume = req.volume;
-        audio.play();
-        console.log("tried to play audio");
-        console.log(req.host);
-    }
-    else if (req.type == "get_audio_base64")
-    {
-        let f = async () =>
-        {
-            let blob = await (await fetch(req.url)).blob();
-            let reader = new FileReader();
-            let result_base64 = await new Promise((resolve) =>
-            {
-                let fileReader = new FileReader();
-                fileReader.onload = (e) => resolve(fileReader.result);
-                fileReader.readAsDataURL(blob);
-            });
-            return Promise.resolve({"response" : result_base64});
-        };
-        return f();
-    }
-    return Promise.resolve(undefined);
-});
+// browser.runtime.onMessage.addListener((req, sender) =>
+// {
+//     if (req.type == "search")
+//     {
+//         let asdf = lookup_indirect(req.text, req.time, req.divexisted, req.settings);
+//         return Promise.resolve({"response" : asdf});
+//     }
+//     if (req.type == "search_kanji")
+//     {
+//         let asdf = lookup_kanji_character(req.text, req.divexisted);
+//         return Promise.resolve({"response" : asdf});
+//     }
+//     else if (req.type == "platform")
+//     {
+//         return Promise.resolve({"response" : platform});
+//     }
+//     else if (req.type == "fixicon")
+//     {
+//         fixicon();
+//     }
+//     else if (req.type == "gimmetext")
+//     {
+//         clipboard_hook(sender.tab);
+//     }
+//     else if (req.type == "refreshjson")
+//     {
+//         refresh_json();
+//     }
+//     else if (req.type == "reader_lookup")
+//     {
+//         browser.tabs.sendMessage(req.id, {type:req.type, x:req.x, y:req.y, text:req.text});
+//     }
+//     else if (req.type == "reader_mode")
+//     {
+//         browser.tabs.sendMessage(req.id, {type:req.type});
+//     }
+//     else if (req.type == "ankiconnect_mine")
+//     {
+//         console.log("handling ankiconnect mining request");
+//         let xhr = new XMLHttpRequest();
+//         xhr.open("POST", req.host, true);
+//         xhr.overrideMimeType('application/json');
+//         //xhr.setRequestHeader('Content-type','application/json; charset=utf-8');
+//         xhr.addEventListener('load', () =>
+//         {
+//             let response = JSON.parse(xhr.responseText);
+//             try
+//             {
+//                 if(response.error)
+//                     send_error(sender.tab.id, "AnkiConnect mining failed: " + response.error);
+//                 else
+//                 {
+//                     if(settings.ankiconnect_force_sync)
+//                     {
+//                         let newxhr = new XMLHttpRequest();
+//                         newxhr.open("POST", req.host, true);
+//                         newxhr.send('{"action": "sync","version": 6}');
+//                     }
+//                 }
+//             }
+//             catch (e)
+//             {
+//                 console.log("error while interacting with ankiconnect:");
+//                 console.log(e);
+//             }
+//         });
+//         xhr.addEventListener('error', (e) =>
+//         {
+//             send_error(sender.tab.id, "AnkiConnect mining failed: unspecified error (Anki is probably not open)");
+//             console.log(e);
+//         });
+//         xhr.addEventListener('timeout', () =>
+//         {
+//             send_error(sender.tab.id, "AnkiConnect mining failed: timed out");
+//         });
+//         xhr.send(req.command);
+//     }
+//     else if (req.type == "play_audio")
+//     {
+//         let audio = new Audio(req.host);
+//         audio.volume = req.volume;
+//         audio.play();
+//         console.log("tried to play audio");
+//         console.log(req.host);
+//     }
+//     else if (req.type == "get_audio_base64")
+//     {
+//         let f = async () =>
+//         {
+//             let blob = await (await fetch(req.url)).blob();
+//             let reader = new FileReader();
+//             let result_base64 = await new Promise((resolve) =>
+//             {
+//                 let fileReader = new FileReader();
+//                 fileReader.onload = (e) => resolve(fileReader.result);
+//                 fileReader.readAsDataURL(blob);
+//             });
+//             return Promise.resolve({"response" : result_base64});
+//         };
+//         return f();
+//     }
+//     return Promise.resolve(undefined);
+// });
 
-browser.contextMenus.create({
-    id: "nazeka-toggle",
-    title: "Toggle Nazeka",
-    contexts: ["page", "selection"],
-    documentUrlPatterns: ["moz-extension://*/reader.html"],
-    onclick: toggle_enabled
-});
+// browser.contextMenus.create({
+//     id: "nazeka-toggle",
+//     title: "Toggle Nazeka",
+//     contexts: ["page", "selection"],
+//     documentUrlPatterns: ["moz-extension://*/reader.html"],
+//     onclick: toggle_enabled
+// });
 
 function sleep(ms)
 {
@@ -2225,3 +2159,27 @@ async function regression_tests()
     console.log("exit regression tests");
 }
 regression_tests();
+
+function main()
+{
+    console.log("Hello World!");
+
+    var alternatives_mode = 3; // 0: longest only; 1: longest and shortest; 2: longest and second longest; 3: all matches
+    var strict_alternatives = true; // if true, alternatives looked up in all kana can not return results with kanji glosses that don't have any usually/exclusively kana info
+    var strict_epwing = true;
+
+    var settings = 
+    {
+        alternatives_mode: alternatives_mode,
+        strict_alternatives: strict_alternatives,
+        strict_epwing: strict_epwing
+    }
+
+    let lookupres = lookup_indirect("ウクライナと黒海の安全航行確保で合意 米政府発表", 0, false, settings);
+
+    console.log(lookupres);
+
+    return 0;
+}
+
+main();
