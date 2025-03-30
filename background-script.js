@@ -2175,7 +2175,7 @@ function main()
         strict_epwing: strict_epwing
     }
 
-    let lookupres = lookup_indirect("ウクライナと黒海の安全航行確保で合意 米政府発表", 0, false, settings);
+    let lookupres = lookup_indirect("自動車25％関税発表でカナダ首相“報復措置”強調", 0, false, settings);
 
     console.log(lookupres);
 
