@@ -5,9 +5,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
-using UnityEngine;
 using System.Reflection;
 using System.ArrayExtensions;
+
+using UnityEngine;
 
 namespace System
 {
@@ -1566,6 +1567,8 @@ public class JapaneseTextTooltip
                     UnityEngine.Debug.LogWarning("Frequency formatting issues");
                     continue;
                 }
+
+                reslist.Add(frequency);
             }
 
             FrequencyNovels.Add(entry.Key, reslist);;
@@ -1575,7 +1578,6 @@ public class JapaneseTextTooltip
     public static void TestFunctionnality()
     {
         LoadRelevantFiles();
-        var output = LookupText("自動車25％関税発表でカナダ首相“報復措置”強調", true);
-        UnityEngine.Debug.Log(output.Count);
+        var output = LookupText("されます", true);
     }
 }
