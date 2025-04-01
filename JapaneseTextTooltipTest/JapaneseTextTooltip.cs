@@ -1,14 +1,78 @@
+#if UNITY_2017_1_OR_NEWER
+#define UNITY
+#endif
+
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Reflection;
 using System.ArrayExtensions;
+using System.IO;
 
+#if UNITY
 using UnityEngine;
+#endif
+
+public class Logger
+{
+    public static void Log(string message)
+    {
+#if UNITY
+        UnityEngine.Debug.Log(message);
+#else
+        System.Console.WriteLine(message);
+#endif
+    }
+
+    public static void LogWarning(string message)
+    {
+#if UNITY
+        UnityEngine.Debug.Log(message);
+#else
+        System.Console.WriteLine(message);
+#endif
+    }
+
+    public static void LogError(string message)
+    {
+#if UNITY
+        UnityEngine.Debug.Log(message);
+#else
+        System.Console.WriteLine(message);
+#endif
+    }
+}
+
+
+#if !UNITY
+public class NazekaFilesLogic
+{
+    public static void LoadFiles()
+    {
+        System.Console.WriteLine(Directory.GetCurrentDirectory());
+
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory() + "/dict");
+        
+        foreach(var file in directory.GetFiles())
+        {
+            if (file.Name.EndsWith(".json"))
+            {
+                LoadedFiles.Add(file.Name.Substring(0, file.Name.Length - ".json".Length), File.ReadAllText(file.FullName));
+            }
+
+            if (file.Name.EndsWith(".txt"))
+            {
+                LoadedFiles.Add(file.Name.Substring(0, file.Name.Length - ".txt".Length), File.ReadAllText(file.FullName));
+            }
+        }
+    }
+
+    public static Dictionary<string, string> LoadedFiles = new Dictionary<string, string>();
+}
+#endif
 
 namespace System
 {
@@ -152,6 +216,44 @@ public class JapaneseTextTooltip
         public List<string> con_tag = new List<string>();
         public bool con_tag_was_array = false;
         public string detail;
+
+        public void GenerateVirtualDeconjugations()
+        {
+            List<string> array = null;
+
+            if (dec_end_was_array)
+                array = dec_end;
+            else if (con_end_was_array)
+                array = con_end;
+            else if (dec_tag_was_array)
+                array = dec_tag;
+            else if (con_tag_was_array)
+                array = con_tag;
+
+            if (array != null)
+            {
+                for (int i = 0; i < array.Count; i++)
+                {
+                    var virtual_rule = new DeconjugationRulesStruct();
+                    virtual_rule.type = type;
+                    virtual_rule.detail = detail;
+
+                    if (dec_end_was_array) virtual_rule.dec_end.Add(dec_end[i]); else if (dec_end.Count > 0) virtual_rule.dec_end.Add(dec_end[0]);
+                    if (con_end_was_array) virtual_rule.con_end.Add(con_end[i]); else if (con_end.Count > 0) virtual_rule.con_end.Add(con_end[0]);
+
+                    if (dec_tag_was_array) virtual_rule.dec_tag.Add(dec_tag[i]); else if (dec_tag.Count > 0) virtual_rule.dec_tag.Add(dec_tag[0]);
+                    if (con_tag_was_array) virtual_rule.con_tag.Add(con_tag[i]); else if (con_tag.Count > 0) virtual_rule.con_tag.Add(con_tag[0]);
+
+                    virtual_deconjugations.Add(virtual_rule);
+                }
+            }
+            else
+            {
+                virtual_deconjugations.Add(this);
+            }
+        }
+
+        public List<DeconjugationRulesStruct> virtual_deconjugations = new List<DeconjugationRulesStruct>();
     }
 
     private class DeconjugationNovel
@@ -279,42 +381,15 @@ public class JapaneseTextTooltip
         if (my_form.tags.Count > my_form.original_text.Length + 6) return null;
         if (my_rule.detail == "" && my_form.tags.Count == 0) return null;
 
-        List<string> array = null;
-
-        if (my_rule.dec_end_was_array)
-            array = my_rule.dec_end;
-        else if (my_rule.con_end_was_array)
-            array = my_rule.con_end;
-        else if (my_rule.dec_tag_was_array)
-            array = my_rule.dec_tag;
-        else if (my_rule.con_tag_was_array)
-            array = my_rule.con_tag;
-
         var collection = new List<DeconjugationNovel>();
 
-        if (array == null)
+        foreach (var virtualrule in my_rule.virtual_deconjugations)
         {
-            collection.Add(stdrule_deconjugate_inner(my_form, my_rule));
-        }
-        else
-        {
-            for(int i = 0; i < array.Count; i++)
+            var ret = stdrule_deconjugate_inner(my_form, virtualrule);
+
+            if (ret != null)
             {
-                var virtual_rule = new DeconjugationRulesStruct();
-                virtual_rule.type = my_rule.type;
-                virtual_rule.detail = my_rule.detail;
-
-                if (my_rule.dec_end_was_array) virtual_rule.dec_end.Add(my_rule.dec_end[i]); else virtual_rule.dec_end.Add(my_rule.dec_end[0]);
-                if (my_rule.con_end_was_array) virtual_rule.con_end.Add(my_rule.con_end[i]); else virtual_rule.con_end.Add(my_rule.con_end[0]);
-                if (my_rule.dec_tag_was_array) virtual_rule.dec_tag.Add(my_rule.dec_tag[i]); else virtual_rule.dec_tag.Add(my_rule.dec_tag[0]);
-                if (my_rule.con_tag_was_array) virtual_rule.con_tag.Add(my_rule.con_tag[i]); else virtual_rule.con_tag.Add(my_rule.con_tag[0]);
-
-                var ret = stdrule_deconjugate_inner(my_form, virtual_rule);
-
-                if (ret != null)
-                {
-                    collection.Add(ret);
-                }
+                collection.Add(ret);
             }
         }
 
@@ -420,39 +495,17 @@ public class JapaneseTextTooltip
     private static List<DeconjugationNovel> substitution_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
     {
         if (my_form.process.Count != 0) return null;
-
         if (my_form.text == "") return null;
-
-        List<string> array = null;
-
-        if (my_rule.dec_end_was_array)
-            array = my_rule.dec_end;
-        else if (my_rule.con_end_was_array)
-            array = my_rule.con_end;
 
         var collection = new List<DeconjugationNovel>();
 
-        if (array == null)
+        foreach (var virtualrule in my_rule.virtual_deconjugations)
         {
-            collection.Add(substitution_inner(my_form, my_rule));
-        }
-        else
-        {
-            for (int i = 0; i < array.Count; i++)
+            var ret = substitution_inner(my_form, virtualrule);
+
+            if (ret != null)
             {
-                var virtual_rule = new DeconjugationRulesStruct();
-                virtual_rule.type = my_rule.type;
-                virtual_rule.detail = my_rule.detail;
-
-                if (my_rule.dec_end_was_array) virtual_rule.dec_end.Add(my_rule.dec_end[i]); else virtual_rule.dec_end.Add(my_rule.dec_end[0]);
-                if (my_rule.con_end_was_array) virtual_rule.con_end.Add(my_rule.con_end[i]); else virtual_rule.con_end.Add(my_rule.con_end[0]);
-
-                var ret = substitution_inner(my_form, virtual_rule);
-
-                if (ret != null)
-                {
-                    collection.Add(ret);
-                }
+                collection.Add(ret);
             }
         }
 
@@ -1329,7 +1382,7 @@ public class JapaneseTextTooltip
                 }
                 catch (Exception)
                 {
-                    UnityEngine.Debug.LogWarning("Failed to sort dictionary results");
+                    Logger.LogWarning("Failed to sort dictionary results");
                 }
 
                 results.Add(new ResultStruct() { text = text, result = result});
@@ -1390,6 +1443,7 @@ public class JapaneseTextTooltip
                 }
             }
 
+            toadd.GenerateVirtualDeconjugations();
             DeconjugationRules.Add(toadd);
         }
 
@@ -1446,7 +1500,7 @@ public class JapaneseTextTooltip
                 if (!subtext.Contains(","))
                     LookupAudio.Add(subtext);
                 else
-                    LookupAudioBroken.Add(subtext.Split(",")[1], subtext.Split(",")[0]);
+                    LookupAudioBroken.Add(subtext.Split(',')[1], subtext.Split(',')[0]);
 
                 i = j + 1;
             }
@@ -1456,7 +1510,7 @@ public class JapaneseTextTooltip
             if (!text.Contains(","))
                 LookupAudio.Add(text);
             else
-                LookupAudioBroken.Add(text.Split(",")[1], text.Split(",")[0]);
+                LookupAudioBroken.Add(text.Split(',')[1], text.Split(',')[0]);
         }
 
         var kanjidata = NazekaFilesLogic.LoadedFiles["kanjidata"];
@@ -1474,7 +1528,7 @@ public class JapaneseTextTooltip
         {
             if(rule.Count != 3)
             {
-                UnityEngine.Debug.LogWarning("Priority rule with wrong number of parameters");
+                Logger.LogWarning("Priority rule with wrong number of parameters");
                 continue;
             }
 
@@ -1490,7 +1544,7 @@ public class JapaneseTextTooltip
             }
             else
             {
-                UnityEngine.Debug.LogWarning("Priority rule formatting issues");
+                Logger.LogWarning("Priority rule formatting issues");
                 continue;
             }
 
@@ -1500,7 +1554,7 @@ public class JapaneseTextTooltip
             }
             else
             {
-                UnityEngine.Debug.LogWarning("Priority rule formatting issues");
+                Logger.LogWarning("Priority rule formatting issues");
                 continue;
             }
 
@@ -1510,7 +1564,7 @@ public class JapaneseTextTooltip
             }
             else
             {
-                UnityEngine.Debug.LogWarning("Priority rule formatting issues");
+                Logger.LogWarning("Priority rule formatting issues");
                 continue;
             }
 
@@ -1528,7 +1582,7 @@ public class JapaneseTextTooltip
             {
                 if (list.Count != 3)
                 {
-                    UnityEngine.Debug.LogWarning("Frequency with wrong number of parameters");
+                    Logger.LogWarning("Frequency with wrong number of parameters");
                     continue;
                 }
 
@@ -1544,7 +1598,7 @@ public class JapaneseTextTooltip
                 }
                 else
                 {
-                    UnityEngine.Debug.LogWarning("Frequency formatting issues");
+                    Logger.LogWarning("Frequency formatting issues");
                     continue;
                 }
 
@@ -1554,7 +1608,7 @@ public class JapaneseTextTooltip
                 }
                 else
                 {
-                    UnityEngine.Debug.LogWarning("Frequency formatting issues");
+                    Logger.LogWarning("Frequency formatting issues");
                     continue;
                 }
 
@@ -1564,7 +1618,7 @@ public class JapaneseTextTooltip
                 }
                 else
                 {
-                    UnityEngine.Debug.LogWarning("Frequency formatting issues");
+                    Logger.LogWarning("Frequency formatting issues");
                     continue;
                 }
 
@@ -1578,6 +1632,13 @@ public class JapaneseTextTooltip
     public static void TestFunctionnality()
     {
         LoadRelevantFiles();
-        var output = LookupText("されます", true);
+
+        var timer = new System.Diagnostics.Stopwatch();
+
+        timer.Start();
+        var output = LookupText("育児・介護休業法が改正され、育児の分野では、子どもの看護休暇についてけがや病気のほか、入園式や卒園式、入学式、感染症に伴う学級閉鎖などでも取得できるようになります。対象も「小学3年生修了」までに広がります。", true);
+        timer.Stop();
+
+        Logger.Log(output.Count.ToString() + " " + timer.ElapsedMilliseconds + " ms");
     }
 }
