@@ -1,4 +1,4 @@
-#if UNITY_2017_1_OR_NEWER
+﻿#if UNITY_2017_1_OR_NEWER
 #define UNITY
 #endif
 
@@ -210,6 +210,7 @@ public class JapaneseTextTooltip
         public List<string> dec_end = new List<string>();
         public bool dec_end_was_array = false;
         public List<string> con_end = new List<string>();
+        public string con_end0 = null;
         public bool con_end_was_array = false;
         public List<string> dec_tag = new List<string>();
         public bool dec_tag_was_array = false;
@@ -243,6 +244,11 @@ public class JapaneseTextTooltip
 
                     if (dec_tag_was_array) virtual_rule.dec_tag.Add(dec_tag[i]); else if (dec_tag.Count > 0) virtual_rule.dec_tag.Add(dec_tag[0]);
                     if (con_tag_was_array) virtual_rule.con_tag.Add(con_tag[i]); else if (con_tag.Count > 0) virtual_rule.con_tag.Add(con_tag[0]);
+
+                    if(virtual_rule.con_end.Count > 0)
+                    {
+                        virtual_rule.con_end0 = virtual_rule.con_end[0];
+                    }
 
                     virtual_deconjugations.Add(virtual_rule);
                 }
@@ -319,6 +325,7 @@ public class JapaneseTextTooltip
     {
         public string text;
         public List<DictionaryEntry> result;
+        public string follow_up;
     }
 
     private class PriorityRule
@@ -341,10 +348,19 @@ public class JapaneseTextTooltip
 
     private static DeconjugationNovel stdrule_deconjugate_inner(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
     {
-        if (!my_form.text.EndsWith(my_rule.con_end[0])) return null;
+        if (my_form.text.Length < my_rule.con_end0.Length) return null;
+
+        for(int i = my_form.text.Length - 1, j = my_rule.con_end0.Length - 1; j >= 0; i--, j--)
+        {
+            if (my_form.text[i] != my_rule.con_end0[j])
+            {
+                return null;
+            }
+        }
+
         if (my_form.tags.Count > 0 && my_form.tags.Last() != my_rule.con_tag[0]) return null;
 
-        var newtext = my_form.text.Substring(0, my_form.text.Length - my_rule.con_end[0].Length) + my_rule.dec_end[0];
+        var newtext = my_form.text.Substring(0, my_form.text.Length - my_rule.con_end0.Length) + my_rule.dec_end[0];
 
         var  newform = new DeconjugationNovel();
         newform.text = newtext;
@@ -374,56 +390,39 @@ public class JapaneseTextTooltip
         return newform;
     }
 
-    private static List<DeconjugationNovel> stdrule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
+    private static void stdrule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule, List<DeconjugationNovel> output)
     {
-        if (my_form.text == "") return null;
-        if (my_form.text.Length > my_form.original_text.Length + 10) return null;
-        if (my_form.tags.Count > my_form.original_text.Length + 6) return null;
-        if (my_rule.detail == "" && my_form.tags.Count == 0) return null;
-
-        var collection = new List<DeconjugationNovel>();
-
-        foreach (var virtualrule in my_rule.virtual_deconjugations)
+        for (var i = 0; i < my_rule.virtual_deconjugations.Count; ++i)
         {
-            var ret = stdrule_deconjugate_inner(my_form, virtualrule);
+            var localrule = my_rule.virtual_deconjugations[i];
+
+            if (my_form.text.Length < localrule.con_end0.Length) continue;
+
+            bool failedtest = false;
+
+            for (int k = my_form.text.Length - 1, j = localrule.con_end0.Length - 1; j >= 0; k--, j--)
+            {
+                if (my_form.text[k] != localrule.con_end0[j])
+                {
+                    failedtest = true;
+                    break;
+                }
+            }
+
+            if(failedtest)
+            {
+                continue;
+            }
+
+            if (my_form.tags.Count > 0 && my_form.tags.Last() != localrule.con_tag[0]) continue;
+
+            var ret = stdrule_deconjugate_inner(my_form, my_rule.virtual_deconjugations[i]);
 
             if (ret != null)
             {
-                collection.Add(ret);
+                output.Add(ret);
             }
         }
-
-        return collection;
-    }
-
-    private static List<DeconjugationNovel> rewriterule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
-    {
-        if (my_form.text != my_rule.con_end[0])
-        {
-            return null;
-        }
-            
-        return stdrule_deconjugate(my_form, my_rule);
-    }
-
-    private static List<DeconjugationNovel> onlyfinalrule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
-    {
-        if (my_form.tags.Count != 0)
-        {
-            return null;
-        }
-
-        return stdrule_deconjugate(my_form, my_rule);
-    }
-
-    private static List<DeconjugationNovel> neverfinalrule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
-    {
-        if (my_form.tags.Count == 0)
-        {
-            return null;
-        }
-
-        return stdrule_deconjugate(my_form, my_rule);
     }
 
     private static bool v1inftrap_check(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
@@ -442,11 +441,11 @@ public class JapaneseTextTooltip
     {
         if (my_form.text == "") return false;
 
-        if (!my_form.text.EndsWith(my_rule.con_end[0])) return false;
+        if (!my_form.text.EndsWith(my_rule.con_end0)) return false;
 
-        var base_text = my_form.text.Substring(0, my_form.text.Length - my_rule.con_end[0].Length);
+        var base_text = my_form.text.Substring(0, my_form.text.Length - my_rule.con_end0.Length);
 
-        if (base_text.EndsWith("��"))
+        if (base_text.EndsWith("さ"))
             return false;
 
         return true;
@@ -458,21 +457,9 @@ public class JapaneseTextTooltip
         { "saspecial", saspecial_check }
     };
 
-    private static List<DeconjugationNovel> contextrule_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
-    {
-        if (!context_functions[my_rule.contextrule](my_form, my_rule))
-        {
-            return null;
-        }
-
-        return stdrule_deconjugate(my_form, my_rule);
-    }
-
     private static DeconjugationNovel substitution_inner(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
     {
-        if (!my_form.text.Contains(my_rule.con_end[0])) return null;
-
-        var newtext = Regex.Replace(my_form.text, my_rule.con_end[0], my_rule.dec_end[0], RegexOptions.None);
+        var newtext = Regex.Replace(my_form.text, my_rule.con_end0, my_rule.dec_end[0], RegexOptions.None);
 
         var newform = new DeconjugationNovel();
         newform.text = newtext;
@@ -492,35 +479,20 @@ public class JapaneseTextTooltip
         return newform;
     }
 
-    private static List<DeconjugationNovel> substitution_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
+    private static void substitution_deconjugate(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule, List<DeconjugationNovel> output)
     {
-        if (my_form.process.Count != 0) return null;
-        if (my_form.text == "") return null;
-
-        var collection = new List<DeconjugationNovel>();
-
         foreach (var virtualrule in my_rule.virtual_deconjugations)
         {
+            if (!my_form.text.Contains(virtualrule.con_end0)) continue;
+
             var ret = substitution_inner(my_form, virtualrule);
 
             if (ret != null)
             {
-                collection.Add(ret);
+                output.Add(ret);
             }
         }
-
-        return collection;
     }
-
-    private static Dictionary<string, Func<DeconjugationNovel, DeconjugationRulesStruct, List<DeconjugationNovel>>> rule_functions = new Dictionary<string, Func<DeconjugationNovel, DeconjugationRulesStruct, List<DeconjugationNovel>>>()
-    {
-        { "stdrule", stdrule_deconjugate },
-        { "rewriterule", rewriterule_deconjugate },
-        { "onlyfinalrule", onlyfinalrule_deconjugate },
-        { "neverfinalrule", neverfinalrule_deconjugate },
-        { "contextrule", contextrule_deconjugate },
-        { "substitution", substitution_deconjugate }
-    };
 
     private static HashSet<DeconjugationNovel> deconjugate(string mytext)
     {
@@ -533,21 +505,87 @@ public class JapaneseTextTooltip
         while(novel.Count > 0)
         {
             var new_novel = new HashSet<DeconjugationNovel>();
+            var ruleoutput = new List<DeconjugationNovel>();
 
             foreach(var form in novel)
             {
+                if(form.text == "")
+                {
+                    continue;
+                }
+
                 foreach(var rule in DeconjugationRules)
                 {
-                    var newform = rule_functions[rule.type](form, rule);
-                
-                    if(newform != null)
+                    switch(rule.type)
                     {
-                        foreach(var myform in newform)
-                        {
-                            if(myform != null && !processed.Contains(myform) && !novel.Contains(myform) && !new_novel.Contains(myform))
-                                new_novel.Add(myform);
-                        }
+                        case "stdrule":
+                            {
+                                if (form.text.Length > form.original_text.Length + 10) break;
+                                if (form.tags.Count > form.original_text.Length + 6) break;
+                                if (rule.detail == "" && form.tags.Count == 0) break;
+
+                                stdrule_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
+                        case "rewriterule":
+                            {
+                                if (form.text != rule.con_end0)
+                                {
+                                    break;
+                                }
+
+                                stdrule_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
+                        case "onlyfinalrule":
+                            {
+                                if (form.tags.Count != 0)
+                                {
+                                    break;
+                                }
+
+                                stdrule_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
+                        case "neverfinalrule":
+                            {
+                                if (form.tags.Count == 0)
+                                {
+                                    break;
+                                }
+
+                                stdrule_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
+                        case "contextrule":
+                            {
+                                if (!context_functions[rule.contextrule](form, rule))
+                                {
+                                    break;
+                                }
+
+                                stdrule_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
+                        case "substitution":
+                            {
+                                if (form.process.Count != 0)
+                                {
+                                    break;
+                                }
+
+                                substitution_deconjugate(form, rule, ruleoutput); 
+                                break;
+                            }
                     }
+                }
+            }
+
+            foreach (var myform in ruleoutput)
+            {
+                if (myform != null && !processed.Contains(myform) && !novel.Contains(myform) && !new_novel.Contains(myform))
+                {
+                    new_novel.Add(myform);
                 }
             }
 
@@ -963,7 +1001,7 @@ public class JapaneseTextTooltip
                 entry.priority -= 50;
                 entry.priorityTags.Add("weird");
             }
-            if (reading_kana == result_kana && entry.deconj.Count == 0) // !entry.deconj fixes �Ȃ���
+            if (reading_kana == result_kana && entry.deconj.Count == 0) // !entry.deconj fixes なって
             {
                 entry.priority += 100;
                 entry.priorityTags.Add("exact kana");
@@ -1095,22 +1133,37 @@ public class JapaneseTextTooltip
     private static DictionaryEntry restrict_by_text(DictionaryEntry entry, string text)
     {
         // deep clone lol (we should probably do this WAY earlier)
-        var term = ObjectExtensions.Copy<DictionaryEntry>(entry);
+        var term = new DictionaryEntry();
+
+        term.seq = entry.seq;
+        term.k_ele = entry.k_ele;
+        term.r_ele = entry.r_ele;
+        term.sense = entry.sense;
+
+        term.from = entry.from;
+        term.found = entry.found;
+        term.orig_found = entry.orig_found;
+        term.deconj = entry.deconj;
+        term.allpos = entry.allpos;
+        term.priority = entry.priority;
+        term.priorityTags = entry.priorityTags;
+        term.has_audio = entry.has_audio;
+        term.freq = entry.freq;
 
         if (term.found == null) // bogus lookup
             return term;
 
         // Example restrictions:
-        //  �䂤: �[ only
-        //  ������: ��� only
-        //  evening: �[�E�[�� only
-        //  last night: �䂤�ׁE������ only
+        //  ゆう: 夕 only
+        //  さくや: 昨夜 only
+        //  evening: 夕・夕べ only
+        //  last night: ゆうべ・さくや only
         // Derived:
-        //  ���F ������E�䂤�� only
-        //  �[�F �䂤�E�䂤�� only
-        //  �[�ׁF �䂤�� only
-        //  evening: �䂤�E�䂤�� only
-        //  last night: �[�ׁE��� only
+        //  昨夜： さくや・ゆうべ only
+        //  夕： ゆう・ゆうべ only
+        //  夕べ： ゆうべ only
+        //  evening: ゆう・ゆうべ only
+        //  last night: 夕べ・昨夜 only
 
         // if we didn't look up kanji, look for the first fitting kanji spellings in the entry (they're ordered sensibly) if there are kanji spellings
         term.orig_found = term.found;
@@ -1352,24 +1405,52 @@ public class JapaneseTextTooltip
 
             if (newlookup.Count > 0)
             {
-                newresults.Add(new ResultStruct() { text = lookup.text, result = newlookup });
+                newresults.Add(new ResultStruct() { text = lookup.text, result = newlookup, follow_up = lookup.follow_up });
             } 
         }
 
         return add_extra_info(newresults); // add extra information like json results and audio data now
     }
 
-    private static List<ResultStruct> LookupText(string text, bool strict_alternatives)
+    private static int MaxDeadEndLength = 15;
+    private static HashSet<char> PunctuationCharacters = new HashSet<char>()
+    {
+        ' ', '.', '?', '!', ',', ';', ':', '(', ')', '[', ']', '{', '}', '⟨', '⟩', '‘', '“', '”', '‘', '’', '"', '/', '\\', // English marks
+        '（', '）', '｛', '｝', '［', '］', '【', '】', '、', '，', '゠', '＝', '…', '‥', '。', '〽', '「', '」', '『', '』', '〝', '〟', '⟨', '⟩', '〜', '：',
+        '！', '？', '♪',
+        '\r', '\n',
+    };
+
+    private static List<ResultStruct> LookupText(string text, int depth)
     {
         var results = new List<ResultStruct>();
-        var first = true;
+        var second_pass = false;
 
-        while (text.Length > 0)
+        while(text.Length > 0 && PunctuationCharacters.Contains(text[0]))
         {
-            var forms = deconjugate(text);
+            text = text.Substring(1);
+        }
+
+        var maxlength = Math.Min(text.Length, MaxDeadEndLength);
+
+        for(var j = maxlength - 1; j > 0; j--)
+        {
+            if(PunctuationCharacters.Contains(text[j]))
+            {
+                maxlength = j;
+            }
+        }
+
+        var i = Math.Min(text.Length, maxlength);
+
+        while (i > 0)
+        {
+            var currenttext = text.Substring(0, i);
+
+            var forms = deconjugate(currenttext);
             var result = build_lookup_comb(forms);
 
-            if (!first && strict_alternatives && is_kana(text))
+            if (!second_pass && is_kana(currenttext))
             {
                 result = filter_kana_ish_results(result);
             }
@@ -1378,27 +1459,40 @@ public class JapaneseTextTooltip
             {
                 try
                 {
-                    result = sort_results(text, result);
+                    result = sort_results(currenttext, result);
                 }
                 catch (Exception)
                 {
                     Logger.LogWarning("Failed to sort dictionary results");
                 }
 
-                results.Add(new ResultStruct() { text = text, result = result});
+                results.Add(new ResultStruct() { text = currenttext, result = result, follow_up = text.Substring(i) });
             }
 
-            text = text.Substring(0, text.Length - 1);
+            i--;
 
-            if (results.Count > 0)
+            if(!second_pass)
             {
-                first = false;
-            } 
+                if (i <= 0 && results.Count == 0)
+                {
+                    i = maxlength;
+                    second_pass = true;
+                }
+            }
+
+            if(results.Count >= depth)
+            {
+                break;
+            }
         }
 
         if (results.Count > 0)
         {
             return skip_rereferenced_entries(results);
+        }
+        else if (text.Length > 0)
+        {
+            return LookupText(text.Substring(1), depth);
         }
 
         return results;
@@ -1440,6 +1534,11 @@ public class JapaneseTextTooltip
                     case "dec_tag": if (property.Value.Type == JTokenType.String) toadd.dec_tag.Add(property.Value.Value<string>()); else { toadd.dec_tag = property.Value.ToObject<List<string>>(); toadd.dec_tag_was_array = true; } break;
                     case "con_tag": if (property.Value.Type == JTokenType.String) toadd.con_tag.Add(property.Value.Value<string>()); else { toadd.con_tag = property.Value.ToObject<List<string>>(); toadd.con_tag_was_array = true; } break;
                     case "detail": toadd.detail = property.Value.Value<string>(); break;
+                }
+
+                if(toadd.con_end.Count > 0)
+                {
+                    toadd.con_end0 = toadd.con_end[0];
                 }
             }
 
@@ -1629,6 +1728,34 @@ public class JapaneseTextTooltip
         }
     }
 
+    private static List<string> SplitTextForLookup(string text)
+    {
+        var output = new List<string>();
+        output.Add("");
+
+        bool lastwaspunctuation = false;
+
+        for (int i = 0; i < text.Length; ++i)
+        { 
+            if(PunctuationCharacters.Contains(text[i]))
+            {
+                if(!lastwaspunctuation)
+                {
+                    output.Add("");
+                }
+                
+                lastwaspunctuation = true;
+            }
+            else
+            {
+                output[output.Count - 1] = output[output.Count - 1] + text[i];
+                lastwaspunctuation = false;
+            }
+        }
+
+        return output;
+    }
+
     public static void TestFunctionnality()
     {
         LoadRelevantFiles();
@@ -1636,9 +1763,39 @@ public class JapaneseTextTooltip
         var timer = new System.Diagnostics.Stopwatch();
 
         timer.Start();
-        var output = LookupText("�玙�E���x�Ɩ@����������A�玙�̕���ł́A�q�ǂ��̊Ō�x�ɂɂ��Ă�����a�C�̂ق��A�������⑲�����A���w���A�����ǂɔ����w�����Ȃǂł��擾�ł���悤�ɂȂ�܂��B�Ώۂ��u���w3�N���C���v�܂łɍL����܂��B", true);
+
+        for(int i = 0; i < 1; ++i)
+        {
+            var splittext = SplitTextForLookup("また、立憲民主党も2日、対策本部の初会合を開き、野田代表は「石破総理大臣からはタフに交渉していこうという姿勢が全く見られない。政府のお尻をたたく役割をわれわれが果たしていく」と述べました。\r\n\r\nまた自由貿易を重視する決意を内外に発信する必要があるとして国会での決議を目指す考えを示しました。\r\n\r\n3日は、労働組合や経済団体から意見を聴くことにしていて、引き続き、影響を分析した上で政府への提言をまとめることにしています。\r\n\r\nさらに、公明党も4日、政務調査会の合同部会で対策を議論する予定にしているほか、日本維新の会や国民民主党も具体的な対策などを検討する方針で、各党は、関税措置による国内産業への影響を見極めた上、政府に必要な対策を求めることにしています。");
+
+            foreach (var text in splittext)
+            {
+                var subtexts = new List<string>() { text };
+                var alreadydone = new HashSet<string>();
+
+                while(subtexts.Count > 0)
+                {
+                    var nexttext = subtexts[0];
+                    subtexts.RemoveAt(0);
+
+                    Logger.Log(nexttext);
+                    var output = LookupText(nexttext, 10);
+
+                    alreadydone.Add(nexttext);
+
+                    foreach (var result in output)
+                    {
+                        if(result.follow_up.Length > 0 && !alreadydone.Contains(result.follow_up))
+                        {
+                            subtexts.Add(result.follow_up);
+                        }
+                    }
+                }
+            }
+        }
+        
         timer.Stop();
 
-        Logger.Log(output.Count.ToString() + " " + timer.ElapsedMilliseconds + " ms");
+        Logger.Log(timer.ElapsedMilliseconds + " ms");
     }
 }
