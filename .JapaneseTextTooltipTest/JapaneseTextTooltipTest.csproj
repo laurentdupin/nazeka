@@ -53,7 +53,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="JapaneseTextTooltip.cs" />
+    <Compile Include="../JapaneseTextTooltip.cs" />
     <Compile Include="Main.cs" />
   </ItemGroup>
   <ItemGroup>
