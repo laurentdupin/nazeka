@@ -262,7 +262,7 @@ public class JapaneseTextTooltip
         public List<DeconjugationRulesStruct> virtual_deconjugations = new List<DeconjugationRulesStruct>();
     }
 
-    private class DeconjugationNovel
+    public class DeconjugationNovel
     {
         public string text;
         public string original_text;
@@ -271,7 +271,7 @@ public class JapaneseTextTooltip
         public List<string> process = new List<string>();
     }
 
-    private class DictionaryEleEntry
+    public class DictionaryEleEntry
     {
         public string reb;
         public string keb;
@@ -280,7 +280,7 @@ public class JapaneseTextTooltip
         public List<string> inf = new List<string>();
     }
 
-    private class DictionarySenseEntry
+    public class DictionarySenseEntry
     {
         public List<string> pos = new List<string>();
         public List<string> misc = new List<string>();
@@ -291,7 +291,7 @@ public class JapaneseTextTooltip
         public List<string> stagr = new List<string>();
     }
 
-    private class DictionaryEntry
+    public class DictionaryEntry
     {
         public int seq;
         public List<DictionaryEleEntry> k_ele = new List<DictionaryEleEntry>();
@@ -321,7 +321,7 @@ public class JapaneseTextTooltip
         public string z;
     }
 
-    private class ResultStruct
+    public class ResultStruct
     {
         public string text;
         public List<DictionaryEntry> result;
@@ -335,7 +335,7 @@ public class JapaneseTextTooltip
         public int rule2;
     }
 
-    private class FrequencyEntry
+    public class FrequencyEntry
     {
         public string freq0;
         public int freq1;
@@ -1421,8 +1421,15 @@ public class JapaneseTextTooltip
         '\r', '\n',
     };
 
+    private static Dictionary<string, Dictionary<int, List<ResultStruct>>> CachedResults = new Dictionary<string, Dictionary<int, List<ResultStruct>>>();
+
     private static List<ResultStruct> LookupText(string text, int depth)
     {
+        if(CachedResults.ContainsKey(text) &&  CachedResults[text].ContainsKey(depth))
+        {
+            return CachedResults[text][depth];
+        }
+
         var results = new List<ResultStruct>();
         var second_pass = false;
 
@@ -1495,6 +1502,13 @@ public class JapaneseTextTooltip
             return LookupText(text.Substring(1), depth);
         }
 
+        if(!CachedResults.ContainsKey(text))
+        {
+            CachedResults.Add(text, new Dictionary<int, List<ResultStruct>>());
+        }
+
+        CachedResults[text].Add(depth, results);
+
         return results;
     }
 
@@ -1507,7 +1521,7 @@ public class JapaneseTextTooltip
     private static List<PriorityRule> PriorityRules = new List<PriorityRule>();
     private static Dictionary<string, List<FrequencyEntry>> FrequencyNovels = new Dictionary<string, List<FrequencyEntry>>();
 
-    private static void LoadRelevantFiles()
+    public static void LoadRelevantFiles()
     {
         var deconjugatorstring = NazekaFilesLogic.LoadedFiles["deconjugator"];
         var deconjugator = JsonConvert.DeserializeObject<JArray>(deconjugatorstring);
@@ -1756,36 +1770,33 @@ public class JapaneseTextTooltip
         return output;
     }
 
-    public static void TestFunctionnality()
+    public static List<ResultStruct> FindDefinitionsInText(string text)
     {
-        LoadRelevantFiles();
+        var outputs = new List<ResultStruct>();
 
-        var timer = new System.Diagnostics.Stopwatch();
-
-        timer.Start();
-
-        for(int i = 0; i < 1; ++i)
+        for (int i = 0; i < 1; ++i)
         {
-            var splittext = SplitTextForLookup("また、立憲民主党も2日、対策本部の初会合を開き、野田代表は「石破総理大臣からはタフに交渉していこうという姿勢が全く見られない。政府のお尻をたたく役割をわれわれが果たしていく」と述べました。\r\n\r\nまた自由貿易を重視する決意を内外に発信する必要があるとして国会での決議を目指す考えを示しました。\r\n\r\n3日は、労働組合や経済団体から意見を聴くことにしていて、引き続き、影響を分析した上で政府への提言をまとめることにしています。\r\n\r\nさらに、公明党も4日、政務調査会の合同部会で対策を議論する予定にしているほか、日本維新の会や国民民主党も具体的な対策などを検討する方針で、各党は、関税措置による国内産業への影響を見極めた上、政府に必要な対策を求めることにしています。");
+            var splittext = SplitTextForLookup(text);
 
-            foreach (var text in splittext)
+            foreach (var subtext in splittext)
             {
-                var subtexts = new List<string>() { text };
+                var subtexts = new List<string>() { subtext };
                 var alreadydone = new HashSet<string>();
 
-                while(subtexts.Count > 0)
+                while (subtexts.Count > 0)
                 {
                     var nexttext = subtexts[0];
                     subtexts.RemoveAt(0);
 
-                    Logger.Log(nexttext);
                     var output = LookupText(nexttext, 10);
+
+                    outputs.AddRange(output);
 
                     alreadydone.Add(nexttext);
 
                     foreach (var result in output)
                     {
-                        if(result.follow_up.Length > 0 && !alreadydone.Contains(result.follow_up))
+                        if (result.follow_up.Length > 0 && !alreadydone.Contains(result.follow_up))
                         {
                             subtexts.Add(result.follow_up);
                         }
@@ -1793,9 +1804,7 @@ public class JapaneseTextTooltip
                 }
             }
         }
-        
-        timer.Stop();
 
-        Logger.Log(timer.ElapsedMilliseconds + " ms");
+        return outputs;
     }
 }
