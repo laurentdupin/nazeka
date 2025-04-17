@@ -323,6 +323,7 @@ public class JapaneseTextTooltip
 
     public class ResultStruct
     {
+        public string input;
         public string text;
         public List<DictionaryEntry> result;
         public string follow_up;
@@ -1405,7 +1406,7 @@ public class JapaneseTextTooltip
 
             if (newlookup.Count > 0)
             {
-                newresults.Add(new ResultStruct() { text = lookup.text, result = newlookup, follow_up = lookup.follow_up });
+                newresults.Add(new ResultStruct() { input = lookup.input, text = lookup.text, result = newlookup, follow_up = lookup.follow_up });
             } 
         }
 
@@ -1425,9 +1426,11 @@ public class JapaneseTextTooltip
 
     private static List<ResultStruct> LookupText(string text, int depth)
     {
-        if(CachedResults.ContainsKey(text) &&  CachedResults[text].ContainsKey(depth))
+        var originaltext = text;
+
+        if(CachedResults.ContainsKey(originaltext) &&  CachedResults[originaltext].ContainsKey(depth))
         {
-            return CachedResults[text][depth];
+            return CachedResults[originaltext][depth];
         }
 
         var results = new List<ResultStruct>();
@@ -1473,7 +1476,7 @@ public class JapaneseTextTooltip
                     Logger.LogWarning("Failed to sort dictionary results");
                 }
 
-                results.Add(new ResultStruct() { text = currenttext, result = result, follow_up = text.Substring(i) });
+                results.Add(new ResultStruct() { input = originaltext, text = currenttext, result = result, follow_up = text.Substring(i) });
             }
 
             i--;
@@ -1502,12 +1505,12 @@ public class JapaneseTextTooltip
             return LookupText(text.Substring(1), depth);
         }
 
-        if(!CachedResults.ContainsKey(text))
+        if(!CachedResults.ContainsKey(originaltext))
         {
-            CachedResults.Add(text, new Dictionary<int, List<ResultStruct>>());
+            CachedResults.Add(originaltext, new Dictionary<int, List<ResultStruct>>());
         }
 
-        CachedResults[text].Add(depth, results);
+        CachedResults[originaltext].Add(depth, results);
 
         return results;
     }
@@ -1770,7 +1773,7 @@ public class JapaneseTextTooltip
         return output;
     }
 
-    public static List<ResultStruct> FindDefinitionsInText(string text)
+    public static List<ResultStruct> FindDefinitionsInText(string text, ref List<string> textsplit)
     {
         var outputs = new List<ResultStruct>();
 
@@ -1780,6 +1783,13 @@ public class JapaneseTextTooltip
 
             foreach (var subtext in splittext)
             {
+                if(subtext.Length <= 0)
+                {
+                    continue;
+                }
+
+                textsplit.Add(subtext);
+
                 var subtexts = new List<string>() { subtext };
                 var alreadydone = new HashSet<string>();
 
