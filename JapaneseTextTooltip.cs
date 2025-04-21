@@ -1424,6 +1424,16 @@ public class JapaneseTextTooltip
 
     private static Dictionary<string, Dictionary<int, List<ResultStruct>>> CachedResults = new Dictionary<string, Dictionary<int, List<ResultStruct>>>();
 
+    public static string ReplaceFirst(string text, string search, string replace)
+    {
+        int pos = text.IndexOf(search);
+        if (pos < 0)
+        {
+            return text;
+        }
+        return text.Substring(0, pos) + replace + text.Substring(pos + search.Length);
+    }
+
     private static List<ResultStruct> LookupText(string text, int depth)
     {
         var originaltext = text;
@@ -1431,6 +1441,17 @@ public class JapaneseTextTooltip
         if(CachedResults.ContainsKey(originaltext) &&  CachedResults[originaltext].ContainsKey(depth))
         {
             return CachedResults[originaltext][depth];
+        }
+
+        if(!text.Contains("っ") && text.Contains("つ"))
+        {
+            var replaced = ReplaceFirst(text, "つ", "っ");
+            var result = LookupText(replaced, depth);
+
+            if(result.Count > 0 && result[0].text.Contains("っ"))
+            {
+                return result;
+            }
         }
 
         var results = new List<ResultStruct>();
