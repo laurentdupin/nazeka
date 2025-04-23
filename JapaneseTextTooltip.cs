@@ -291,6 +291,18 @@ public class JapaneseTextTooltip
         public List<string> stagr = new List<string>();
     }
 
+    public static string ReplaceFullWidthWithHalf(string full)
+    {
+        var output = full;
+
+        foreach(var c in FullWidthToHalfWidthMap)
+        {
+            output = output.Replace(c.Key, c.Value);
+        }
+
+        return output;
+    }
+
     public class DictionaryEntry
     {
         public int seq;
@@ -308,6 +320,25 @@ public class JapaneseTextTooltip
         public List<string> priorityTags;
         public List<string> has_audio;
         public FrequencyEntry freq;
+
+        public void CleanFullWidth()
+        {
+            foreach(var k in k_ele)
+            {
+                if(k.keb != null)
+                {
+                    k.keb = ReplaceFullWidthWithHalf(k.keb);
+                }
+            }
+
+            foreach (var r in r_ele)
+            {
+                if(r.reb != null)
+                {
+                    r.reb = ReplaceFullWidthWithHalf(r.reb);
+                }
+            }
+        }
     }
 
     private class KanjiDataStruct
@@ -321,12 +352,155 @@ public class JapaneseTextTooltip
         public string z;
     }
 
+    private static void CutStringForKanaTransformation(string input, ref string prefix, ref string middle, ref string suffix)
+    {
+        int iFirstKana = -1;
+        int iLastKana = -1;
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            var c = input[i];
+
+            if (is_hira(c))
+            {
+                if (iFirstKana < 0)
+                {
+                    iFirstKana = i;
+                }
+
+                iLastKana = i;
+            }
+        }
+
+        if (iFirstKana > 0)
+        {
+            prefix = input.Substring(0, iFirstKana);
+        }
+
+        if (iLastKana >= 0 && iLastKana < input.Length - 1)
+        {
+            suffix = input.Substring(iLastKana + 1);
+        }
+
+        if(prefix.Length == 0 && suffix.Length == 0)
+        {
+            prefix = input;
+        }
+        else
+        {
+            middle = input.Substring(prefix.Length, input.Length - prefix.Length - suffix.Length);
+        }   
+    }
+
     public class ResultStruct
     {
         public string input;
         public string text;
         public List<DictionaryEntry> result;
-        public string follow_up;
+        public string followup = null;
+        public ResultStruct followupstruct = null;
+        public string kanastring = null;
+
+        public string ComputeKanaStringPerKebReb(string text, string reb, string keb, string textprefix, string textmiddle, string textsuffix, int kelecount)
+        {
+            if (reb == null || keb == null)
+            {
+                return null;
+            }
+
+            if (text == keb)
+            {
+                return reb;
+            }
+
+            var kebprefix = "";
+            var kebmiddle = "";
+            var kebsuffix = "";
+            CutStringForKanaTransformation(keb, ref kebprefix, ref kebmiddle, ref kebsuffix);
+
+            if (kelecount > 1 && kebmiddle.Length == 0)
+            {
+                return null;
+            }
+
+            if (textprefix == kebprefix)
+            {
+                var rebprefix = "";
+                var rebbuffer = reb;
+
+                while (rebbuffer.Length > 0)
+                {
+                    if (rebbuffer == kebmiddle)
+                    {
+                        break;
+                    }
+
+                    rebprefix += rebbuffer[0];
+                    rebbuffer = rebbuffer.Substring(1);
+                }
+
+                return rebprefix + textmiddle + textsuffix;
+            }
+
+            return null;
+        }
+
+        public string ComputeKanaString()
+        {
+            if(is_kana(text))
+            {
+                return text;
+            }
+
+            var textprefix = "";
+            var textmiddle = "";
+            var textsuffix = "";
+            CutStringForKanaTransformation(text, ref textprefix, ref textmiddle, ref textsuffix);
+
+            foreach (var entry in result)
+            {
+                foreach(var r_ele in entry.r_ele)
+                {
+                    foreach(var k_ele in entry.k_ele)
+                    {
+                        var computed = ComputeKanaStringPerKebReb(text, r_ele.reb, k_ele.keb, textprefix, textmiddle, textsuffix, entry.k_ele.Count);
+
+                        if (computed != null)
+                        {
+                            return computed;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            foreach (var entry in result)
+            {
+                foreach (var r_ele in entry.r_ele)
+                {
+                    bool first = false;
+
+                    foreach (var k_ele in entry.k_ele)
+                    {
+                        if(first)
+                        {
+                            first = false;
+                            continue;
+                        }
+
+                        var computed = ComputeKanaStringPerKebReb(text, r_ele.reb, k_ele.keb, textprefix, textmiddle, textsuffix, entry.k_ele.Count);
+
+                        if (computed != null)
+                        {
+                            return computed;
+                        }
+                    }
+                }
+            }
+
+            return text;
+        }
     }
 
     private class PriorityRule
@@ -597,6 +771,17 @@ public class JapaneseTextTooltip
         return processed;
     }
 
+
+    private static bool is_hira(char c)
+    {
+        return (c >= 0x3040 && c <= 0x3096) || (c >= 0x309D && c <= 0x309E);
+    }
+
+    private static bool is_kata(char c)
+    {
+        return (c >= 0x30A0 && c <= 0x30F6) || (c >= 0x30FD && c <= 0x30FE);
+    }
+
     private static string replace_hira_with_kata(string text)
     {
         var newtext = "";
@@ -846,8 +1031,10 @@ public class JapaneseTextTooltip
         for (var i = 0; i < str.Length; i++)
         {
             var codepoint = str[i];
-            if (!(codepoint >= 0x3040 && codepoint <= 0x30FF))
+            if (!is_hira(codepoint) && !is_kata(codepoint))
+            {
                 return false;
+            }  
         }
 
         return true;
@@ -1406,7 +1593,7 @@ public class JapaneseTextTooltip
 
             if (newlookup.Count > 0)
             {
-                newresults.Add(new ResultStruct() { input = lookup.input, text = lookup.text, result = newlookup, follow_up = lookup.follow_up });
+                newresults.Add(new ResultStruct() { input = lookup.input, text = lookup.text, result = newlookup, followup = lookup.followup });
             } 
         }
 
@@ -1420,6 +1607,11 @@ public class JapaneseTextTooltip
         '（', '）', '｛', '｝', '［', '］', '【', '】', '、', '，', '゠', '＝', '…', '‥', '。', '〽', '「', '」', '『', '』', '〝', '〟', '⟨', '⟩', '〜', '：',
         '！', '？', '♪',
         '\r', '\n',
+    };
+
+    private static HashSet<char> Digits = new HashSet<char>()
+    {
+        '０', '0', '１', '1', '２', '2', '３', '3', '４', '4', '５', '5', '６', '6','７', '7', '８', '8', '９', '9',
     };
 
     private static Dictionary<string, Dictionary<int, List<ResultStruct>>> CachedResults = new Dictionary<string, Dictionary<int, List<ResultStruct>>>();
@@ -1443,6 +1635,8 @@ public class JapaneseTextTooltip
             return CachedResults[originaltext][depth];
         }
 
+        Logger.Log("Cache miss " + text);
+
         if(!text.Contains("っ") && text.Contains("つ"))
         {
             var replaced = ReplaceFirst(text, "つ", "っ");
@@ -1457,7 +1651,7 @@ public class JapaneseTextTooltip
         var results = new List<ResultStruct>();
         var second_pass = false;
 
-        while(text.Length > 0 && PunctuationCharacters.Contains(text[0]))
+        while(text.Length > 0 && (PunctuationCharacters.Contains(text[0]) || Digits.Contains(text[0])))
         {
             text = text.Substring(1);
         }
@@ -1497,7 +1691,7 @@ public class JapaneseTextTooltip
                     Logger.LogWarning("Failed to sort dictionary results");
                 }
 
-                results.Add(new ResultStruct() { input = originaltext, text = currenttext, result = result, follow_up = text.Substring(i) });
+                results.Add(new ResultStruct() { input = originaltext, text = currenttext, result = result, followup = text.Substring(i) });
             }
 
             i--;
@@ -1519,16 +1713,21 @@ public class JapaneseTextTooltip
 
         if (results.Count > 0)
         {
-            return skip_rereferenced_entries(results);
+            results = skip_rereferenced_entries(results);
         }
         else if (text.Length > 0)
         {
-            return LookupText(text.Substring(1), depth);
+            results = LookupText(text.Substring(1), depth);
         }
 
         if(!CachedResults.ContainsKey(originaltext))
         {
             CachedResults.Add(originaltext, new Dictionary<int, List<ResultStruct>>());
+        }
+
+        foreach(var result in results)
+        {
+            result.kanastring = result.ComputeKanaString();
         }
 
         CachedResults[originaltext].Add(depth, results);
@@ -1544,6 +1743,17 @@ public class JapaneseTextTooltip
     private static Dictionary<string, KanjiDataStruct> KanjiData = new Dictionary<string, KanjiDataStruct>();
     private static List<PriorityRule> PriorityRules = new List<PriorityRule>();
     private static Dictionary<string, List<FrequencyEntry>> FrequencyNovels = new Dictionary<string, List<FrequencyEntry>>();
+
+    private static Dictionary<char, char> FullWidthToHalfWidthMap = new Dictionary<char, char>()
+    {
+        { '　', ' '},{ '！','!'},{ '＂', '"'},{ '＃', '#'},{ '＄', '$'},{ '％', '%'},{ '＆', '&'}, {'＇', '\''},{ '（', '('},{ '）', ')'},{ '＊', '*'},{ '＋', '+'},{ '，', ','},{ '－', '-'},{'．', '.'},{ '／', '/'},
+        {'０', '0'},{ '１', '1'},{ '２', '2'},{ '３', '3'},{ '４', '4'},{ '５', '5'},{ '６', '6'},{'７', '7'},{ '８', '8'},{ '９', '9'},
+        {'：', ','},{ '；', ';'},{ '＜', '<'},{ '＝', '='},{ '＞', '>'},{ '？', '?'},{ '＠', '@'},
+        {'Ａ', 'A'},{ 'Ｂ', 'B'},{ 'Ｃ', 'C'},{ 'Ｄ', 'D'},{ 'Ｅ', 'E'},{ 'Ｆ', 'F'},{ 'Ｇ', 'G'},{'Ｈ', 'H'},{ 'Ｉ', 'I'},{ 'Ｊ', 'J'},{ 'Ｋ', 'K'},{ 'Ｌ', 'L'},{ 'Ｍ', 'M'},{ 'Ｎ', 'N'},{'Ｏ', 'O'},{ 'Ｐ', 'P'},{ 'Ｑ', 'Q'},{ 'Ｒ', 'R'},{ 'Ｓ', 'S'},{ 'Ｔ', 'T'},{ 'Ｕ', 'U'},{'Ｖ', 'V'},{ 'Ｗ', 'W'},{ 'Ｘ', 'X'},{ 'Ｙ', 'Y'},{ 'Ｚ', 'Z'},
+        {'［', '['},{ '＼', '\\'},{'］', ']'},{ '＾', '^'},{ '＿', '_'},{ '｀', '`'},
+        {'ａ', 'a'},{ 'ｂ', 'b'},{ 'ｃ', 'c'},{ 'ｄ', 'd'},{ 'ｅ', 'e'},{ 'ｆ', 'f'},{ 'ｇ', 'g'},{'ｈ', 'h'},{ 'ｉ', 'i'},{ 'ｊ', 'j'},{ 'ｋ', 'k'},{ 'ｌ', 'l'},{ 'ｍ', 'm'},{ 'ｎ', 'n'},{'ｏ', 'o'},{ 'ｐ', 'p'},{ 'ｑ', 'q'},{ 'ｒ', 'r'},{ 'ｓ', 's'},{ 'ｔ', 't'},{ 'ｕ', 'u'},{'ｖ', 'v'},{ 'ｗ', 'w'},{ 'ｘ', 'x'},{ 'ｙ', 'y'},{ 'ｚ', 'z'},
+        {'｛', '{'},{ '｜', '|'},{ '｝', '}'}
+    };
 
     public static void LoadRelevantFiles()
     {
@@ -1598,6 +1808,7 @@ public class JapaneseTextTooltip
         for (int i = 0; i < DictionaryEntries.Count; ++i)
         {
             var entry = DictionaryEntries[i];
+            entry.CleanFullWidth();
 
             foreach(var k_ele in entry.k_ele)
             {
@@ -1625,7 +1836,6 @@ public class JapaneseTextTooltip
         }
 
         var audiotablecontent = NazekaFilesLogic.LoadedFiles["jdic audio"];
-
         {
             var i = 0;
             var j = 0;
@@ -1809,7 +2019,12 @@ public class JapaneseTextTooltip
                     continue;
                 }
 
-                textsplit.Add(subtext);
+                if(textsplit != null)
+                {
+                    textsplit.Add(subtext);
+                }
+
+                var tempoutputs = new List<ResultStruct>();
 
                 var subtexts = new List<string>() { subtext };
                 var alreadydone = new HashSet<string>();
@@ -1820,21 +2035,72 @@ public class JapaneseTextTooltip
                     subtexts.RemoveAt(0);
 
                     var output = LookupText(nexttext, 10);
-
-                    outputs.AddRange(output);
+                    tempoutputs.AddRange(output);
 
                     alreadydone.Add(nexttext);
 
+                    bool firstfollowup = true;
+
                     foreach (var result in output)
                     {
-                        if (result.follow_up.Length > 0 && !alreadydone.Contains(result.follow_up))
+                        if (result.followup.Length > 0 && !alreadydone.Contains(result.followup))
                         {
-                            subtexts.Add(result.follow_up);
+                            if(firstfollowup)
+                            {
+                                subtexts.Insert(0, result.followup);
+                                firstfollowup = false;
+                            }
+                            else
+                            {
+                                subtexts.Add(result.followup);
+                            }
+                        }
+
+                        foreach(var previousresult in tempoutputs)
+                        {
+                            if(result.input == previousresult.followup && previousresult.followupstruct == null)
+                            {
+                                previousresult.followupstruct = result;
+                            }
                         }
                     }
                 }
+
+                outputs.AddRange(tempoutputs);
             }
         }
+
+        var substringtokana = new Dictionary<string, string>();
+
+        foreach(var substring in textsplit)
+        {
+            var tempsubstring = substring;
+
+            foreach(var result in outputs)
+            {
+                if(result.input == substring)
+                {
+                    var currentresult = result;
+
+                    while (currentresult != null)
+                    {
+                        tempsubstring = tempsubstring.Replace(currentresult.text, currentresult.kanastring);
+                        currentresult = currentresult.followupstruct;
+                    }
+                }
+            }
+
+            substringtokana.TryAdd(substring, tempsubstring);
+        }
+
+        var finalkana = text;
+
+        foreach(var entry in substringtokana)
+        {
+            finalkana = finalkana.Replace(entry.Key, entry.Value);
+        }
+
+        Logger.Log(text + " => " + finalkana);
 
         return outputs;
     }
