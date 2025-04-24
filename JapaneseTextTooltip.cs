@@ -400,6 +400,7 @@ public class JapaneseTextTooltip
         public string followup = null;
         public ResultStruct followupstruct = null;
         public string kanastring = null;
+        public Dictionary<string, string> ReplacementRules = new Dictionary<string, string>();
 
         public string ComputeKanaStringPerKebReb(string text, string reb, string keb, string textprefix, string textmiddle, string textsuffix, int kelecount)
         {
@@ -410,6 +411,7 @@ public class JapaneseTextTooltip
 
             if (text == keb)
             {
+                ReplacementRules.TryAdd(text, reb);
                 return reb;
             }
 
@@ -439,17 +441,20 @@ public class JapaneseTextTooltip
                     rebbuffer = rebbuffer.Substring(1);
                 }
 
+                ReplacementRules.TryAdd(textprefix, rebprefix);
+
                 return rebprefix + textmiddle + textsuffix;
             }
 
             return null;
         }
 
-        public string ComputeKanaString()
+        public void ComputeKanaString()
         {
             if(is_kana(text))
             {
-                return text;
+                kanastring = text;
+                return;
             }
 
             var textprefix = "";
@@ -467,7 +472,8 @@ public class JapaneseTextTooltip
 
                         if (computed != null)
                         {
-                            return computed;
+                            kanastring = computed;
+                            return;
                         }
 
                         break;
@@ -493,13 +499,14 @@ public class JapaneseTextTooltip
 
                         if (computed != null)
                         {
-                            return computed;
+                            kanastring = computed;
+                            return;
                         }
                     }
                 }
             }
 
-            return text;
+            kanastring = text;
         }
     }
 
@@ -1727,7 +1734,7 @@ public class JapaneseTextTooltip
 
         foreach(var result in results)
         {
-            result.kanastring = result.ComputeKanaString();
+            result.ComputeKanaString();
         }
 
         CachedResults[originaltext].Add(depth, results);
