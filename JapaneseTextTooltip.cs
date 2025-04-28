@@ -1649,7 +1649,7 @@ public class JapaneseTextTooltip
             return CachedResults[originaltext][depth];
         }
 
-        Logger.Log("Cache miss " + text);
+        //Logger.Log("Cache miss " + text);
 
         if(!text.Contains("っ") && text.Contains("つ"))
         {
@@ -2185,7 +2185,7 @@ public class JapaneseTextTooltip
                 finalkana = finalkana.Replace(entry.Key, entry.Value);
             }
 
-            Logger.Log(text + " => " + finalkana);
+            //Logger.Log(text + " => " + finalkana);
         }
 
         return outputs;
