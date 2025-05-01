@@ -2018,14 +2018,11 @@ public class JapaneseTextTooltip
         return output;
     }
 
-    public static List<Definitions> FindDefinitionsInText(string text, ref List<string> textsplit, ref List<FuriganaPlacement> furiganas)
+    public static List<Definitions> FindDefinitionsInText(string text, ref List<FuriganaPlacement> furiganas)
     {
         var outputs = new List<Definitions>();
 
-        if (textsplit != null)
-        {
-            textsplit.Clear();
-        }
+        var textsplit = new List<string>();
 
         for (int i = 0; i < 1; ++i)
         {
@@ -2089,62 +2086,59 @@ public class JapaneseTextTooltip
             }
         }
 
-        if(textsplit != null)
+        var substringtokana = new Dictionary<string, string>();
+        var substringfurigana = new Dictionary<string, List<FuriganaPlacement>>();
+
+        foreach (var substring in textsplit)
         {
-            var substringtokana = new Dictionary<string, string>();
-            var substringfurigana = new Dictionary<string, List<FuriganaPlacement>>();
+            var tempsubstring = substring;
 
-            foreach (var substring in textsplit)
+            foreach (var result in outputs)
             {
-                var tempsubstring = substring;
-
-                foreach (var result in outputs)
+                if (result.input == substring)
                 {
-                    if (result.input == substring)
+                    var currentresult = result;
+
+                    while (currentresult != null)
                     {
-                        var currentresult = result;
+                        int indexoriginal = substring.IndexOf(currentresult.text);
 
-                        while (currentresult != null)
+                        while (indexoriginal >= 0)
                         {
-                            int indexoriginal = substring.IndexOf(currentresult.text);
-
-                            while (indexoriginal >= 0)
+                            foreach (var rule in currentresult.ReplacementRules)
                             {
-                                foreach (var rule in currentresult.ReplacementRules)
+                                var indexreplacement = substring.IndexOf(rule.Key, indexoriginal);
+
+                                while (indexreplacement >= 0)
                                 {
-                                    var indexreplacement = substring.IndexOf(rule.Key, indexoriginal);
-
-                                    while (indexreplacement >= 0)
+                                    if (indexreplacement < indexoriginal + currentresult.text.Length)
                                     {
-                                        if (indexreplacement < indexoriginal + currentresult.text.Length)
+                                        if (!substringfurigana.ContainsKey(substring))
                                         {
-                                            if (!substringfurigana.ContainsKey(substring))
-                                            {
-                                                substringfurigana.Add(substring, new List<FuriganaPlacement>());
-                                            }
-
-                                            substringfurigana[substring].Add(new FuriganaPlacement() { Original = rule.Key, Replacement = rule.Value, Start = indexreplacement });
-                                        }
-                                        else
-                                        {
-                                            break;
+                                            substringfurigana.Add(substring, new List<FuriganaPlacement>());
                                         }
 
-                                        indexreplacement = substring.IndexOf(currentresult.text, indexreplacement + 1);
+                                        substringfurigana[substring].Add(new FuriganaPlacement() { Original = rule.Key, Replacement = rule.Value, Start = indexreplacement });
                                     }
-                                }
+                                    else
+                                    {
+                                        break;
+                                    }
 
-                                indexoriginal = substring.IndexOf(currentresult.text, indexoriginal + 1);
+                                    indexreplacement = substring.IndexOf(currentresult.text, indexreplacement + 1);
+                                }
                             }
 
-                            tempsubstring = tempsubstring.Replace(currentresult.text, currentresult.kanastring);
-                            currentresult = currentresult.followupstruct;
+                            indexoriginal = substring.IndexOf(currentresult.text, indexoriginal + 1);
                         }
+
+                        tempsubstring = tempsubstring.Replace(currentresult.text, currentresult.kanastring);
+                        currentresult = currentresult.followupstruct;
                     }
                 }
-
-                substringtokana.TryAdd(substring, tempsubstring);
             }
+
+            substringtokana.TryAdd(substring, tempsubstring);
 
             if (furiganas != null)
             {
