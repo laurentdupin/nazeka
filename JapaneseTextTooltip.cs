@@ -219,7 +219,7 @@ public class JapaneseTextTooltip
         }
     }
 
-    private class KanjiDataStruct
+    public class KanjiDataStruct
     {
         public string c;
         public string g;
@@ -1620,14 +1620,14 @@ public class JapaneseTextTooltip
         return results;
     }
 
-    private static List<DictionaryEntry> DictionaryEntries = new List<DictionaryEntry>();
-    private static Dictionary<string, List<int>> LookupKanji = new Dictionary<string, List<int>>();
-    private static Dictionary<string, List<int>> LookupKana = new Dictionary<string, List<int>>();
-    private static HashSet<string> LookupAudio = new HashSet<string>();
-    private static Dictionary<string, string> LookupAudioBroken = new Dictionary<string, string>();
-    private static Dictionary<string, KanjiDataStruct> KanjiData = new Dictionary<string, KanjiDataStruct>();
+    public static List<DictionaryEntry> DictionaryEntries = new List<DictionaryEntry>();
+    public static Dictionary<string, List<int>> LookupKanji = new Dictionary<string, List<int>>();
+    public static Dictionary<string, List<int>> LookupKana = new Dictionary<string, List<int>>();
+    public static HashSet<string> LookupAudio = new HashSet<string>();
+    public static Dictionary<string, string> LookupAudioBroken = new Dictionary<string, string>();
+    public static Dictionary<string, KanjiDataStruct> KanjiData = new Dictionary<string, KanjiDataStruct>();
     private static List<PriorityRule> PriorityRules = new List<PriorityRule>();
-    private static Dictionary<string, List<FrequencyEntry>> FrequencyNovels = new Dictionary<string, List<FrequencyEntry>>();
+    public static Dictionary<string, List<FrequencyEntry>> FrequencyNovels = new Dictionary<string, List<FrequencyEntry>>();
 
     private static Dictionary<char, char> FullWidthToHalfWidthMap = new Dictionary<char, char>()
     {
@@ -1966,7 +1966,7 @@ public class JapaneseTextTooltip
 
             foreach (var result in outputs)
             {
-                if (result.input == substring)
+                if (substring.Contains(result.input))
                 {
                     var currentresult = result;
 
