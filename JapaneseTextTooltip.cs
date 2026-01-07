@@ -1602,6 +1602,8 @@ public class JapaneseTextTooltip
     }
 
     private static int MaxDeadEndLength = 15;
+    private static readonly char[] TsuVariants = new char[] { 'つ', 'っ', 'ツ', 'ッ', 'ﾂ', 'ｯ' };
+    private static readonly char[] SmallTsuVariants = new char[] { 'っ', 'ッ', 'ｯ' };
     private static HashSet<char> PunctuationCharacters = new HashSet<char>()
     {
         ' ', '.', '?', '!', ',', ';', ':', '(', ')', '[', ']', '{', '}', '⟨', '⟩', '‘', '“', '”', '‘', '’', '"', '/', '\\', // English marks
@@ -1659,6 +1661,11 @@ public class JapaneseTextTooltip
 
     private static List<Definitions> LookupText(string text, int depth)
     {
+        return LookupText(text, depth, true);
+    }
+
+    private static List<Definitions> LookupText(string text, int depth, bool allowSmallTsuFallback)
+    {
         var originaltext = text;
 
         if (CachedResults.TryGetValue(originaltext, out var cachedByDepth) && cachedByDepth.TryGetValue(depth, out var cachedResults))
@@ -1669,14 +1676,12 @@ public class JapaneseTextTooltip
 
         //Logger.Log("Cache miss " + text);
 
-        if(!text.Contains("っ") && text.Contains("つ"))
+        if (allowSmallTsuFallback)
         {
-            var replaced = ReplaceFirst(text, "つ", "っ");
-            var result = LookupText(replaced, depth);
-
-            if(result.Count > 0 && result[0].text.Contains("っ"))
+            var tsuResult = TrySmallTsuVariants(text, depth);
+            if (tsuResult != null)
             {
-                return result;
+                return tsuResult;
             }
         }
 
@@ -1778,6 +1783,42 @@ public class JapaneseTextTooltip
         TouchCachedResult(originaltext);
 
         return results;
+    }
+
+    private static List<Definitions> TrySmallTsuVariants(string text, int depth)
+    {
+        if (text.IndexOfAny(TsuVariants) < 0)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            var original = text[i];
+            if (Array.IndexOf(TsuVariants, original) < 0)
+            {
+                continue;
+            }
+
+            for (int j = 0; j < SmallTsuVariants.Length; j++)
+            {
+                var replacement = SmallTsuVariants[j];
+                if (replacement == original)
+                {
+                    continue;
+                }
+
+                var replaced = text.Substring(0, i) + replacement + text.Substring(i + 1);
+                var result = LookupText(replaced, depth, false);
+
+                if (result.Count > 0 && result[0].text.IndexOfAny(SmallTsuVariants) >= 0)
+                {
+                    return result;
+                }
+            }
+        }
+
+        return null;
     }
 
     public static List<DictionaryEntry> DictionaryEntries = new List<DictionaryEntry>();
