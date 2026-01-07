@@ -289,7 +289,7 @@ public class JapaneseTextTooltip
 
             if (text == keb)
             {
-                ReplacementRules.TryAdd(text, reb);
+                TryAddReplacementRule(text, reb);
                 return reb;
             }
 
@@ -319,7 +319,7 @@ public class JapaneseTextTooltip
                     rebbuffer = rebbuffer.Substring(1);
                 }
 
-                ReplacementRules.TryAdd(textprefix, rebprefix);
+                TryAddReplacementRule(textprefix, rebprefix);
 
                 return rebprefix + textmiddle + textsuffix;
             }
@@ -331,7 +331,7 @@ public class JapaneseTextTooltip
         {
             if(is_kana(text))
             {
-                kanastring = text;
+                SetKanaString(text);
                 return;
             }
 
@@ -350,7 +350,7 @@ public class JapaneseTextTooltip
 
                         if (computed != null)
                         {
-                            kanastring = computed;
+                            SetKanaString(computed);
                             return;
                         }
 
@@ -377,14 +377,112 @@ public class JapaneseTextTooltip
 
                         if (computed != null)
                         {
-                            kanastring = computed;
+                            SetKanaString(computed);
                             return;
                         }
                     }
                 }
             }
 
-            kanastring = text;
+            SetKanaString(text);
+        }
+
+        private void SetKanaString(string value)
+        {
+            kanastring = value;
+            BuildFuriganaRulesFromKana();
+        }
+
+        private void TryAddReplacementRule(string original, string replacement)
+        {
+            if (string.IsNullOrEmpty(original) || string.IsNullOrEmpty(replacement))
+            {
+                return;
+            }
+
+            if (original == replacement)
+            {
+                return;
+            }
+
+            if (!ContainsNonKana(original))
+            {
+                return;
+            }
+
+            ReplacementRules.TryAdd(original, replacement);
+        }
+
+        private static bool ContainsNonKana(string value)
+        {
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (!is_hira(c) && !is_kata(c))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void BuildFuriganaRulesFromKana()
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(kanastring))
+            {
+                return;
+            }
+
+            if (text == kanastring)
+            {
+                return;
+            }
+
+            if (!is_kana(kanastring))
+            {
+                return;
+            }
+
+            var textIndex = 0;
+            var kanaIndex = 0;
+            var lastTextIndex = 0;
+            var lastKanaIndex = 0;
+
+            while (textIndex < text.Length)
+            {
+                var c = text[textIndex];
+
+                if (is_hira(c) || is_kata(c))
+                {
+                    var matchIndex = kanastring.IndexOf(c, kanaIndex);
+                    if (matchIndex < 0)
+                    {
+                        textIndex++;
+                        continue;
+                    }
+
+                    var originalSegment = text.Substring(lastTextIndex, textIndex - lastTextIndex);
+                    var kanaSegment = kanastring.Substring(lastKanaIndex, matchIndex - lastKanaIndex);
+                    TryAddReplacementRule(originalSegment, kanaSegment);
+
+                    textIndex++;
+                    kanaIndex = matchIndex + 1;
+                    lastTextIndex = textIndex;
+                    lastKanaIndex = kanaIndex;
+                }
+                else
+                {
+                    textIndex++;
+                }
+            }
+
+            if (lastTextIndex < text.Length && lastKanaIndex < kanastring.Length)
+            {
+                var originalSegment = text.Substring(lastTextIndex);
+                var kanaSegment = kanastring.Substring(lastKanaIndex);
+                TryAddReplacementRule(originalSegment, kanaSegment);
+            }
         }
     }
 
@@ -519,7 +617,7 @@ public class JapaneseTextTooltip
 
     private static DeconjugationNovel substitution_inner(DeconjugationNovel my_form, DeconjugationRulesStruct my_rule)
     {
-        var newtext = Regex.Replace(my_form.text, my_rule.con_end0, my_rule.dec_end[0], RegexOptions.None);
+        var newtext = my_form.text.Replace(my_rule.con_end0, my_rule.dec_end[0]);
 
         var newform = new DeconjugationNovel();
         newform.text = newtext;
@@ -923,6 +1021,24 @@ public class JapaneseTextTooltip
         }
 
         return true;
+    }
+
+    private static bool contains_kata(string str)
+    {
+        if (string.IsNullOrEmpty(str))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < str.Length; i++)
+        {
+            if (is_kata(str[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool prefers_kana(object obj)
@@ -1500,6 +1616,36 @@ public class JapaneseTextTooltip
     };
 
     private static Dictionary<string, Dictionary<int, List<Definitions>>> CachedResults = new Dictionary<string, Dictionary<int, List<Definitions>>>();
+    private const int CachedResultsMaxEntries = 2048;
+    private static LinkedList<string> CachedResultsOrder = new LinkedList<string>();
+    private static Dictionary<string, LinkedListNode<string>> CachedResultsNodes = new Dictionary<string, LinkedListNode<string>>();
+
+    private static void TouchCachedResult(string key)
+    {
+        if (CachedResultsNodes.TryGetValue(key, out var node))
+        {
+            CachedResultsOrder.Remove(node);
+            CachedResultsOrder.AddFirst(node);
+        }
+        else
+        {
+            node = CachedResultsOrder.AddFirst(key);
+            CachedResultsNodes[key] = node;
+        }
+
+        while (CachedResultsOrder.Count > CachedResultsMaxEntries)
+        {
+            var last = CachedResultsOrder.Last;
+            if (last == null)
+            {
+                break;
+            }
+
+            CachedResultsOrder.RemoveLast();
+            CachedResultsNodes.Remove(last.Value);
+            CachedResults.Remove(last.Value);
+        }
+    }
 
     public static string ReplaceFirst(string text, string search, string replace)
     {
@@ -1515,9 +1661,10 @@ public class JapaneseTextTooltip
     {
         var originaltext = text;
 
-        if(CachedResults.ContainsKey(originaltext) &&  CachedResults[originaltext].ContainsKey(depth))
+        if (CachedResults.TryGetValue(originaltext, out var cachedByDepth) && cachedByDepth.TryGetValue(depth, out var cachedResults))
         {
-            return CachedResults[originaltext][depth];
+            TouchCachedResult(originaltext);
+            return cachedResults;
         }
 
         //Logger.Log("Cache miss " + text);
@@ -1562,7 +1709,19 @@ public class JapaneseTextTooltip
 
             if (!second_pass && is_kana(currenttext))
             {
-                result = filter_kana_ish_results(result);
+                var filtered = filter_kana_ish_results(result);
+
+                if (filtered == null || filtered.Count == 0)
+                {
+                    if (!contains_kata(currenttext))
+                    {
+                        result = filtered;
+                    }
+                }
+                else
+                {
+                    result = filtered;
+                }
             }
 
             if (result.Count > 0)
@@ -1616,6 +1775,7 @@ public class JapaneseTextTooltip
         }
 
         CachedResults[originaltext].Add(depth, results);
+        TouchCachedResult(originaltext);
 
         return results;
     }
@@ -1894,67 +2054,63 @@ public class JapaneseTextTooltip
         var outputs = new List<Definitions>();
 
         var textsplit = new List<string>();
+        var splittext = SplitTextForLookup(text);
 
-        for (int i = 0; i < 1; ++i)
+        foreach (var subtext in splittext)
         {
-            var splittext = SplitTextForLookup(text);
-
-            foreach (var subtext in splittext)
+            if(subtext.Length <= 0)
             {
-                if(subtext.Length <= 0)
+                continue;
+            }
+
+            if(textsplit != null)
+            {
+                textsplit.Add(subtext);
+            }
+
+            var tempoutputs = new List<Definitions>();
+
+            var subtexts = new List<string>() { subtext };
+            var alreadydone = new HashSet<string>();
+
+            while (subtexts.Count > 0)
+            {
+                var nexttext = subtexts[0];
+                subtexts.RemoveAt(0);
+
+                var output = LookupText(nexttext, 10);
+                tempoutputs.AddRange(output);
+
+                alreadydone.Add(nexttext);
+
+                bool firstfollowup = true;
+
+                foreach (var result in output)
                 {
-                    continue;
-                }
-
-                if(textsplit != null)
-                {
-                    textsplit.Add(subtext);
-                }
-
-                var tempoutputs = new List<Definitions>();
-
-                var subtexts = new List<string>() { subtext };
-                var alreadydone = new HashSet<string>();
-
-                while (subtexts.Count > 0)
-                {
-                    var nexttext = subtexts[0];
-                    subtexts.RemoveAt(0);
-
-                    var output = LookupText(nexttext, 10);
-                    tempoutputs.AddRange(output);
-
-                    alreadydone.Add(nexttext);
-
-                    bool firstfollowup = true;
-
-                    foreach (var result in output)
+                    if (result.followup.Length > 0 && !alreadydone.Contains(result.followup))
                     {
-                        if (result.followup.Length > 0 && !alreadydone.Contains(result.followup))
+                        if(firstfollowup)
                         {
-                            if(firstfollowup)
-                            {
-                                subtexts.Insert(0, result.followup);
-                                firstfollowup = false;
-                            }
-                            else
-                            {
-                                subtexts.Add(result.followup);
-                            }
+                            subtexts.Insert(0, result.followup);
+                            firstfollowup = false;
                         }
-
-                        foreach(var previousresult in tempoutputs)
+                        else
                         {
-                            if(result.input == previousresult.followup && previousresult.followupstruct == null)
-                            {
-                                previousresult.followupstruct = result;
-                            }
+                            subtexts.Add(result.followup);
+                        }
+                    }
+
+                    foreach(var previousresult in tempoutputs)
+                    {
+                        if(result.input == previousresult.followup && previousresult.followupstruct == null)
+                        {
+                            previousresult.followupstruct = result;
                         }
                     }
                 }
-
-                outputs.AddRange(tempoutputs);
             }
+
+            outputs.AddRange(tempoutputs);
         }
 
         var substringtokana = new Dictionary<string, string>();
@@ -2011,38 +2167,6 @@ public class JapaneseTextTooltip
 
             substringtokana.TryAdd(substring, tempsubstring);
 
-            if (furiganas != null)
-            {
-                furiganas.Clear();
-                var nextmin = 0;
-
-                while (nextmin < text.Length)
-                {
-                    var nextsubstring = text.Substring(nextmin);
-                    var found = false;
-
-                    foreach (var entry in substringfurigana)
-                    {
-                        if (nextsubstring.StartsWith(entry.Key))
-                        {
-                            foreach(var f in entry.Value)
-                            {
-                                furiganas.Add(new FuriganaPlacement() { Original = f.Original, Replacement = f.Replacement, Start = f.Start + nextmin });
-                            }
-
-                            nextmin += entry.Key.Length;
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        nextmin += 1;
-                    }
-                }
-            }
-
             var finalkana = text;
 
             foreach (var entry in substringtokana)
@@ -2051,6 +2175,45 @@ public class JapaneseTextTooltip
             }
 
             //Logger.Log(text + " => " + finalkana);
+        }
+
+        if (furiganas != null)
+        {
+            furiganas.Clear();
+            var nextmin = 0;
+
+            while (nextmin < text.Length)
+            {
+                var nextsubstring = text.Substring(nextmin);
+                string bestKey = null;
+                List<FuriganaPlacement> bestPlacements = null;
+
+                foreach (var entry in substringfurigana)
+                {
+                    if (nextsubstring.StartsWith(entry.Key))
+                    {
+                        if (bestKey == null || entry.Key.Length > bestKey.Length)
+                        {
+                            bestKey = entry.Key;
+                            bestPlacements = entry.Value;
+                        }
+                    }
+                }
+
+                if (bestKey != null)
+                {
+                    foreach (var f in bestPlacements)
+                    {
+                        furiganas.Add(new FuriganaPlacement() { Original = f.Original, Replacement = f.Replacement, Start = f.Start + nextmin });
+                    }
+
+                    nextmin += bestKey.Length;
+                }
+                else
+                {
+                    nextmin += 1;
+                }
+            }
         }
 
         return outputs;
