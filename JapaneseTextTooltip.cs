@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Threading;
 
 #if UNITY
 using UnityEngine;
@@ -1829,6 +1830,10 @@ public class JapaneseTextTooltip
     public static Dictionary<string, KanjiDataStruct> KanjiData = new Dictionary<string, KanjiDataStruct>();
     private static List<PriorityRule> PriorityRules = new List<PriorityRule>();
     public static Dictionary<string, List<FrequencyEntry>> FrequencyNovels = new Dictionary<string, List<FrequencyEntry>>();
+    private static readonly object LoadLock = new object();
+    public static bool IsReady { get; private set; } = false;
+    public static bool IsLoading { get; private set; } = false;
+    public static string LoadError { get; private set; } = null;
 
     private static Dictionary<char, char> FullWidthToHalfWidthMap = new Dictionary<char, char>()
     {
@@ -1841,8 +1846,53 @@ public class JapaneseTextTooltip
         {'｛', '{'},{ '｜', '|'},{ '｝', '}'}
     };
 
+    private static void ResetLookupState()
+    {
+        DeconjugationRules.Clear();
+        DictionaryEntries.Clear();
+        LookupKanji.Clear();
+        LookupKana.Clear();
+        LookupAudio.Clear();
+        LookupAudioBroken.Clear();
+        KanjiData.Clear();
+        PriorityRules.Clear();
+        FrequencyNovels.Clear();
+        CachedResults.Clear();
+        CachedResultsOrder.Clear();
+        CachedResultsNodes.Clear();
+    }
+
+    public static void BeginLoadAsync()
+    {
+        lock (LoadLock)
+        {
+            if (IsReady || IsLoading)
+            {
+                return;
+            }
+        }
+
+        var thread = new Thread(LoadRelevantFiles);
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
     public static void LoadRelevantFiles()
     {
+        lock (LoadLock)
+        {
+            if (IsReady || IsLoading)
+            {
+                return;
+            }
+
+            IsLoading = true;
+            LoadError = null;
+        }
+
+        try
+        {
+            ResetLookupState();
         var deconjugatorstring = NazekaFilesLogic.LoadedFiles["deconjugator"];
         var deconjugator = JsonConvert.DeserializeObject<JArray>(deconjugatorstring);
 
@@ -2060,6 +2110,20 @@ public class JapaneseTextTooltip
 
             FrequencyNovels.Add(entry.Key, reslist);;
         }
+        }
+        catch (Exception ex)
+        {
+            LoadError = ex.Message;
+            Logger.LogError("Failed to load Japanese dictionary: " + ex.Message);
+        }
+        finally
+        {
+            lock (LoadLock)
+            {
+                IsLoading = false;
+                IsReady = LoadError == null;
+            }
+        }
     }
 
     private static List<string> SplitTextForLookup(string text)
@@ -2093,6 +2157,12 @@ public class JapaneseTextTooltip
     public static List<Definitions> FindDefinitionsInText(string text, ref List<FuriganaPlacement> furiganas)
     {
         var outputs = new List<Definitions>();
+
+        if (!IsReady)
+        {
+            BeginLoadAsync();
+            return outputs;
+        }
 
         var textsplit = new List<string>();
         var splittext = SplitTextForLookup(text);
